@@ -1,0 +1,75 @@
+name: CI/CD WeatherForecast API
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+env:
+  CONFIGURATION: Release
+  DOTNET_VERSION: '8.0.x'
+
+# -------------------------
+# CI: BUILD, TEST, PUBLISH
+# -------------------------
+jobs:
+  build_test_publish:
+    name: Build, Test & Publish
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout source
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: ${{ env.DOTNET_VERSION }}
+
+    - name: Restore
+      run: dotnet restore
+
+    - name: Build
+      run: dotnet build --configuration $CONFIGURATION --no-restore
+
+    - name: Test
+      run: dotnet test **/*.UnitTest.csproj --configuration $CONFIGURATION --no-build
+
+    - name: Publish API
+      run: |
+        dotnet publish \
+          --configuration $CONFIGURATION \
+          --output api-package
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: weatherforecast-api
+        path: api-package
+
+# -------------------------
+# CD: DEPLOY TO TEST
+# -------------------------
+  deploy_test:
+    name: Deploy to Test
+    needs: build_test_publish
+    uses: ./.github/workflows/deploy-appservice.yml
+    with:
+      web_app_name: weatherforecast-hb-test
+      resource_group: weatherforecast-hb-test
+    secrets: inherit
+
+# -------------------------
+# CD: DEPLOY TO PRODUCTION
+# -------------------------
+  deploy_production:
+    name: Deploy to Production
+    needs: deploy_test
+    uses: ./.github/workflows/deploy-appservice.yml
+    with:
+      web_app_name: weatherforecast-hb-production
+      resource_group: weatherforecast-hb-production
+    secrets: inherit
